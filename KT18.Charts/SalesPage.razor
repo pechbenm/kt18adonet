@@ -1,0 +1,63 @@
+@page "/sales"
+
+<PageTitle>График продаж</PageTitle>
+
+<h1>График продаж</h1>
+
+<div class="sales-page__filters">
+    <label>
+        Год:
+        <select value="@_year" @onchange="OnYearChanged">
+            @foreach (var year in _years)
+            {
+                <option value="@year">@year</option>
+            }
+        </select>
+    </label>
+</div>
+
+<div class="sales-kpis">
+    <div class="sales-kpi"><span>Всего за год</span><strong>@Total.ToString("N0") тыс.</strong></div>
+    <div class="sales-kpi"><span>Среднее в месяц</span><strong>@Average.ToString("N1") тыс.</strong></div>
+    <div class="sales-kpi"><span>Лучший месяц</span><strong>@Best.Label (@Best.Value.ToString("N0") тыс.)</strong></div>
+</div>
+
+<SalesChartComponent Title="@($"Продажи по месяцам, {_year}")"
+                     Data="_data"
+                     Unit="тыс."
+                     @bind-ChartType="_chartType" />
+
+@code {
+    private static readonly string[] Months =
+        { "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек" };
+
+    private readonly int[] _years = { 2024, 2025, 2026 };
+    private int _year = 2026;
+    private SalesChartType _chartType = SalesChartType.Bar;
+    private List<SalesPoint> _data = new();
+
+    private decimal Total => _data.Sum(p => p.Value);
+    private decimal Average => _data.Count == 0 ? 0 : Total / _data.Count;
+    private SalesPoint Best => _data.MaxBy(p => p.Value) ?? new SalesPoint("—", 0);
+
+    protected override void OnInitialized() => _data = BuildData(_year);
+
+    private void OnYearChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year))
+        {
+            _year = year;
+            _data = BuildData(year);
+        }
+    }
+
+    // Демонстрационные данные: тренд + сезонность + детерминированный шум (seed = год).
+    private static List<SalesPoint> BuildData(int year)
+    {
+        var rnd = new Random(year);
+        return Months
+            .Select((m, i) => new SalesPoint(m, Math.Round(
+                (decimal)(100 + 9 * i + 25 * Math.Sin(i / 12.0 * 2 * Math.PI) + rnd.Next(-12, 13)))))
+            .ToList();
+    }
+}

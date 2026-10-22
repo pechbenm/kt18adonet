@@ -1,0 +1,79 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<section class="sales-chart">
+    <header class="sales-chart__toolbar">
+        <h3 class="sales-chart__title">@Title</h3>
+        <div class="sales-chart__switch" role="group" aria-label="Тип графика">
+            <button type="button" class="@ButtonClass(SalesChartType.Bar)"
+                    @onclick="() => SelectTypeAsync(SalesChartType.Bar)">Столбцы</button>
+            <button type="button" class="@ButtonClass(SalesChartType.Line)"
+                    @onclick="() => SelectTypeAsync(SalesChartType.Line)">Линия</button>
+        </div>
+    </header>
+
+    <canvas @ref="_canvas" class="sales-chart__canvas" role="img" aria-label="@Title"></canvas>
+</section>
+
+@code {
+    private const string ModulePath = "./_content/KT18.Charts/salesChart.js";
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private bool _disposed;
+
+    [Parameter] public string Title { get; set; } = "Продажи";
+
+    [Parameter] public IReadOnlyList<SalesPoint> Data { get; set; } = Array.Empty<SalesPoint>();
+
+    /// <summary>Единица измерения, добавляется к значению в подсказке.</summary>
+    [Parameter] public string Unit { get; set; } = "";
+
+    /// <summary>Основной цвет графика (CSS-цвет).</summary>
+    [Parameter] public string Accent { get; set; } = "#2563eb";
+
+    [Parameter] public SalesChartType ChartType { get; set; } = SalesChartType.Bar;
+
+    [Parameter] public EventCallback<SalesChartType> ChartTypeChanged { get; set; }
+
+    private string ButtonClass(SalesChartType type) =>
+        type == ChartType ? "sales-chart__btn active" : "sales-chart__btn";
+
+    private async Task SelectTypeAsync(SalesChartType type)
+    {
+        if (type == ChartType) return;
+        ChartType = type;
+        await ChartTypeChanged.InvokeAsync(type);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // JS-модуль подгружается один раз при первом рендере, дальше только перерисовка.
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", ModulePath);
+        if (_disposed) return;
+
+        await _module.InvokeVoidAsync(
+            "renderChart",
+            _canvas,
+            ChartType == SalesChartType.Line ? "line" : "bar",
+            Data.Select(p => p.Label).ToArray(),
+            Data.Select(p => (double)p.Value).ToArray(),
+            new { unit = Unit, accent = Accent });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is null) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("disposeChart", _canvas);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Соединение уже закрыто — освобождать нечего.
+        }
+    }
+}
